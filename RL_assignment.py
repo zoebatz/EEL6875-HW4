@@ -89,14 +89,18 @@ class TrainEnv(gym.Env):
         self.current_episode = None
         self.episode_len = 0
         self.step_idx = 0
-#        self.current_speed = 0.0
-#        self.ref_speed = 0.0
 
-        # Kinematics
+        # Kinematics for lead and ego
         self.x_ego = self.v_ego = self.a_prev = 0.0
         self.x_lead = self.v_lead = 0.0
         self.d_init_range = d_init_range # randomize inital gap each reset
-        
+
+
+    # helper function for observations
+    def _make_obs(self):
+        d = self.x_lead - self.x_ego
+        v_rel = self.v_ego - self.v_lead
+        return np.array([self.v_ego, self.v_lead, d, v_rel, self.a_prev], dtype=np.float32)
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -106,44 +110,60 @@ class TrainEnv(gym.Env):
         self.episode_len = len(self.current_episode)
         self.step_idx = 0
 
-        # Initialize
-        self.current_speed = 0.0
-        self.ref_speed = self.current_episode[self.step_idx]
+        # Initialize kinematics
+        self.v_ego = 0.0
+        self.a_prev = 0.0
+        self.v_lead = float(self.current_episode[self.step_idx]) # lead speed first element of chunk
+        self.x_ego = 0.0
 
-        obs = np.array([self.current_speed, self.ref_speed], dtype=np.float32)
+        # start lead ahead randomly (between 15-25m), realistic and easier for learning
+        self.x_lead = np.random.uniform(*self.d_init_range)
+
+        obs = self._make_obs()   # helper funct
         info = {}
         return obs, info
 
     def step(self, action):
         accel = np.clip(action[0], -2.0, 2.0)
-        self.current_speed += accel * self.delta_t
-        if self.current_speed < 0:
-            self.current_speed = 0.0
+        dt = self.delta_t
 
-        self.ref_speed = self.current_episode[self.step_idx]
-        error = abs(self.current_speed - self.ref_speed)
+        # update ego
+        self.v_ego = max(0.0, self.v_ego + accel * dt)  # above 0.0
+        self.x_ego = self.x_ego + self.v_ego * dt
 
-        # ---- change reward ----
-        if REWARD_MODE == 'squared':
-            # squared error
-            reward = -(error ** 2) 
-        elif REWARD_MODE == 'huber':
-            # huber loss, squared for small error, abs for large error
-            if error <= HUBER_DELTA:
-                reward = -0.5 * (error **2)
-            else:
-                reward = -HUBER_DELTA * (error - 0.5 * HUBER_DELTA)
+        # update lead
+        self.v_lead = float(self.current_episode[self.step_idx])
+        self.x_lead = self.x_lead + self.v_lead * dt
+
+        # distance and jerk
+        d = self.x_lead - self.x_ego
+        j = (accel - self.a_prev) / dt
+
+        # reward
+        speed_diff =  abs(self.v_ego - self.v_lead)
+
+        if d < self.d_min:
+            dist_penalty = (self.d_min - d) # too close
+        elif d > self.d_max:
+            dist_penalty = (d - self.d_max) # too far
         else:
-            # default abs error
-            reward = -error 
+            dist_penalty = 0.0  # acceptable distance
+
+        reward = (-self.lambda_d * dist_penalty
+                  - self.lambda_v * speed_diff
+                  - self.lambda_j * (j ** 2))
         
+        # update prev accel
+        self.a_prev = accel
 
         self.step_idx += 1
         terminated = (self.step_idx >= self.episode_len)
         truncated = False
 
-        obs = np.array([self.current_speed, self.ref_speed], dtype=np.float32)
-        info = {"speed_error": error}
+        obs = self._make_obs()
+        info = {"speed_diff": speed_diff,
+                "distance": d,
+                "jerk": j}
         return obs, reward, terminated, truncated, info
 
 
@@ -158,56 +178,80 @@ class TestEnv(gym.Env):
       - reward: -|current_speed - reference_speed|
     """
 
-    def __init__(self, full_data, delta_t=1.0):
+    def __init__(self, full_data, delta_t=1.0,
+                 d_init=20.0, d_min=5.0, d_max=30.0):
         super().__init__()
         self.full_data = full_data
         self.n_steps = len(full_data)
         self.delta_t = delta_t
+        self.d_min, self.d_max = d_min, d_max
 
         self.action_space = spaces.Box(low=-2.0, high=2.0, shape=(1,), dtype=np.float32)
-        self.observation_space = spaces.Box(low=0.0, high=50.0, shape=(2,), dtype=np.float32)
+        low = np.array([0.0, 0.0, 0.0, -50.0, -2.0], dtype=np.float32)    
+        high = np.array([50.0, 50.0, 100.0, 50.0, 2.0], dtype=np.float32)
+        self.observation_space = spaces.Box(low=low, high=high, shape=(5,), dtype=np.float32)
 
         self.idx = 0
-        self.current_speed = 0.0
+        self.x_ego = self.v_ego = self.a_prev = 0.0
+        self.x_lead = d_init
+        self.v_lead = 0.0
+
+    # helper function for observations
+    def _make_obs(self):
+        d = self.x_lead - self.x_ego
+        v_rel = self.v_ego - self.v_lead
+        return np.array([self.v_ego, self.v_lead, d, v_rel, self.a_prev], dtype=np.float32)
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.idx = 0
-        self.current_speed = 0.0
-        ref_speed = self.full_data[self.idx]
-        obs = np.array([self.current_speed, ref_speed], dtype=np.float32)
+        self.x_ego = 0.0
+        self.v_ego = 0.0
+        self.a_prev = 0.0
+        self.x_lead = 20.0
+        self.v_lead = float(self.current_episode[self.step_idx])
+
+        obs = self._make_obs()
         info = {}
         return obs, info
 
     def step(self, action):
         accel = np.clip(action[0], -2.0, 2.0)
-        self.current_speed += accel * self.delta_t
-        if self.current_speed < 0:
-            self.current_speed = 0.0
+        dt = self.delta_t
 
-        ref_speed = self.full_data[self.idx]
-        error = abs(self.current_speed - ref_speed)
+        self.v_ego = max(0.0, self.v_ego + accel * dt) 
+        self.x_ego = self.x_ego + self.v_ego * dt
 
-        # ---- change reward ----
-        if REWARD_MODE == 'squared':
-            # squared error
-            reward = -(error ** 2) 
-        elif REWARD_MODE == 'huber':
-            # huber loss, squared for small error, abs for large error
-            if error <= HUBER_DELTA:
-                reward = -0.5 * (error **2)
-            else:
-                reward = -HUBER_DELTA * (error - 0.5 * HUBER_DELTA)
+        self.v_lead = float(self.full_data[self.idx])
+        self.x_lead = self.x_lead + self.v_lead * dt
+
+        # distance and jerk
+        d = self.x_lead - self.x_ego
+        j = (accel - self.a_prev) / dt
+
+        speed_diff =  abs(self.v_ego - self.v_lead)
+
+        # compute reward for analysis
+        if d < self.d_min:
+            dist_penalty = (self.d_min - d) # too close
+        elif d > self.d_max:
+            dist_penalty = (d - self.d_max) # too far
         else:
-            # default abs error
-            reward = -error 
+            dist_penalty = 0.0  # acceptable distance
+
+        reward = (-1.0 * dist_penalty
+                  - 0.5 * speed_diff
+                  - 0.1 * (j ** 2))
         
+        self.a_prev = accel
         self.idx += 1
         terminated = (self.idx >= self.n_steps)
         truncated = False
 
-        obs = np.array([self.current_speed, ref_speed], dtype=np.float32)
-        info = {"speed_error": error}
+        obs = self._make_obs()
+        info = {"speed_diff": speed_diff,
+                "distance": d,
+                "jerk": j}
         return obs, reward, terminated, truncated, info
 
 
@@ -330,7 +374,13 @@ def main():
 
     # 5B) Create the TRAIN environment
     def make_train_env():
-        return TrainEnv(episodes_list, delta_t=1.0)
+        return TrainEnv(episodes_list, delta_t=1.0,
+                        d_init_range=(15.0, 25.0), # helps at reset to minimize penalities
+                        d_min=5.0, d_max=30.0, # min and max follow distance
+                        lambda_d=1.0, # reward weight, follow distance most important
+                        lambda_v=0.5, # reward weight, speed secondary to distance
+                        lambda_j=0.1, # reward weight, minimize jerk for comfort but not a safety concern
+                        )
     
     num_envs = 8
     train_env = SubprocVecEnv([make_train_env for _ in range(num_envs)])
@@ -342,8 +392,6 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Training on device: {device}")
 
-    # ---- schedule learning rate decay ----
-    lr_schedule = get_linear_fn(3e-4, 1.5e-4, 1.0)
 
     # ---- for TD3 and DDPG ---- 
     # needs noise for exploration
@@ -466,6 +514,104 @@ model = ModelClass('MlpPolicy', train_env, **common_kwargs, **MODEL_CONFIG[model
     print(f"[INFO] Model saved to: {save_path}.zip")
 
     # ------------------------------------------------------------------------
+    # 5E) Test the model on the FULL 1200-step dataset in one go (ACC)
+    # ------------------------------------------------------------------------
+    test_env = TestEnv(
+        full_data=full_speed_data,
+        delta_t=0.1,   # match training dt
+        d_init=20.0,   # start mid-band
+        d_min=5.0, d_max=30.0
+    )
+
+    obs, _ = test_env.reset()
+    v_ego_list, v_lead_list, d_list, j_list = [], [], [], []
+    rewards, actions = [], []
+
+    for _ in range(DATA_LEN):
+        action, _ = model.predict(obs, deterministic=True)  # no exploration in testing
+        obs, reward, terminated, truncated, info = test_env.step(action)
+
+        # obs = [v_ego, v_lead, d, v_rel, a_prev]
+        v_ego, v_lead, d, _, _ = obs
+        v_ego_list.append(float(v_ego))
+        v_lead_list.append(float(v_lead))
+        d_list.append(float(d))
+        j_list.append(float(info["jerk"]))
+        rewards.append(float(reward))
+        actions.append(float(np.clip(action[0], -2.0, 2.0)))
+
+        if terminated or truncated:
+            break
+
+    # ---- Convert to arrays
+    v_ego_arr = np.array(v_ego_list)
+    v_lead_arr = np.array(v_lead_list)
+    d_arr = np.array(d_list)
+    j_arr = np.array(j_list)
+
+    # ---- Metrics required for report
+    speed_diff = np.abs(v_ego_arr - v_lead_arr)
+    mae_speed = float(np.mean(speed_diff))
+    rmse_speed = float(np.sqrt(np.mean((v_ego_arr - v_lead_arr) ** 2)))
+    jerk_mean = float(np.mean(j_arr))
+    jerk_var = float(np.var(j_arr))
+    in_range_pct = float(np.mean((d_arr >= 5.0) & (d_arr <= 30.0)) * 100.0)
+    avg_test_reward = float(np.mean(rewards))
+    corr = float(np.corrcoef(v_ego_arr, v_lead_arr)[0, 1])
+
+    print(f"[TEST] MAE={mae_speed:.3f}, RMSE={rmse_speed:.3f}, "
+        f"Jerk μ={jerk_mean:.3f}, Jerk σ²={jerk_var:.3f}, "
+        f"InRange%={in_range_pct:.1f}, Corr={corr:.3f}")
+
+    # ---- Save metrics
+    metrics_path = os.path.join(log_dir, f"acc_test_metrics_chunk{chunk_size}_{timestamp}.csv")
+    with open(metrics_path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["avg_test_reward", "MAE_speed", "RMSE_speed",
+                        "jerk_mean", "jerk_var", "in_range_pct",
+                        "Training Time", "Corr Coeff"])
+        writer.writerow([avg_test_reward, mae_speed, rmse_speed,
+                        jerk_mean, jerk_var, in_range_pct,
+                        round(end_time - start_time, 2), corr])
+
+    # ---- Plots required for the report
+    # 1) Ego vs Lead speed
+    plt.figure(figsize=(10, 5))
+    plt.plot(v_lead_arr, label="Lead Speed", linestyle="--")
+    plt.plot(v_ego_arr, label="Ego Speed", linestyle="-")
+    plt.xlabel("Timestep"); plt.ylabel("Speed (m/s)")
+    plt.title(f"ACC: Ego vs Lead Speeds (chunk_size={chunk_size})")
+    plt.legend(); plt.tight_layout()
+    plt.savefig(os.path.join(log_dir, f"acc_speed_tracking_chunk{chunk_size}.png"))
+
+    # 2) Distance over time with safe band [5,30] m
+    plt.figure(figsize=(10, 4))
+    plt.plot(d_arr, label="Following Distance")
+    plt.axhspan(5.0, 30.0, alpha=0.15, label="Safe Range [5,30] m")
+    plt.xlabel("Timestep"); plt.ylabel("Distance (m)")
+    plt.title("Following Distance Over Time")
+    plt.legend(); plt.tight_layout()
+    plt.savefig(os.path.join(log_dir, f"acc_distance_over_time_chunk{chunk_size}.png"))
+
+    # 3) Jerk over time
+    plt.figure(figsize=(10, 4))
+    plt.plot(j_arr)
+    plt.xlabel("Timestep"); plt.ylabel("Jerk (m/s³)")
+    plt.title(f"Jerk Over Time (mean={jerk_mean:.3f}, var={jerk_var:.3f})")
+    plt.tight_layout()
+    plt.savefig(os.path.join(log_dir, f"acc_jerk_over_time_chunk{chunk_size}.png"))
+
+    # 4) Speed difference |v_ego - v_lead|
+    plt.figure(figsize=(10, 4))
+    plt.plot(speed_diff)
+    plt.xlabel("Timestep"); plt.ylabel("|Δv| (m/s)")
+    plt.title(f"Speed Difference (MAE={mae_speed:.3f}, RMSE={rmse_speed:.3f})")
+    plt.tight_layout()
+    plt.savefig(os.path.join(log_dir, f"acc_speed_diff_chunk{chunk_size}.png"))
+
+
+'''
+    # ------------------------------------------------------------------------
     # 5E) Test the model on the FULL 1200-step dataset in one go
     # ------------------------------------------------------------------------
     test_env = TestEnv(full_speed_data, delta_t=1.0)
@@ -529,7 +675,7 @@ model = ModelClass('MlpPolicy', train_env, **common_kwargs, **MODEL_CONFIG[model
     plt.savefig(os.path.join(log_dir, f"error_plot_chunk{chunk_size}.png"))
 #    plt.show()
 
-
+'''
 
 if __name__ == "__main__":
     main()
