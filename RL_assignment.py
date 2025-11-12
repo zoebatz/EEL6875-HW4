@@ -25,28 +25,7 @@ MODEL_DICT = {'SAC': SAC, 'PPO': PPO, 'TD3': TD3, 'DDPG': DDPG}
 REWARD_MODE = 'huber' # squared or huber
 HUBER_DELTA = 1.0   # huber threshold
 
-'''# ------------------------------------------------------------------------
-# 1) Always create a 1200-step speed dataset
-# ------------------------------------------------------------------------
-DATA_LEN = 1200
-CSV_FILE = "speed_profile.csv"
 
-# ---- set random seed for reproducability ----
-SEED = 27
-print(f"[INFO] Using random seed: {SEED}")
-
-np.random.seed(SEED)
-
-# Force-generate a 1200-step sinusoidal + noise speed profile
-speeds = 10 + 5 * np.sin(0.02 * np.arange(DATA_LEN)) + 2 * np.random.randn(DATA_LEN)
-df_fake = pd.DataFrame({"speed": speeds})
-df_fake.to_csv(CSV_FILE, index=False)
-print(f"Created {CSV_FILE} with {DATA_LEN} steps.")
-
-df = pd.read_csv(CSV_FILE)
-full_speed_data = df["speed"].values
-assert len(full_speed_data) == DATA_LEN, "Dataset must be 1200 steps after generation."
-'''
 # ------------------------------------------------------------------------
 # 2) Utility: chunk the dataset, possibly with leftover
 # ------------------------------------------------------------------------
@@ -72,27 +51,52 @@ class TrainEnv(gym.Env):
     Speed-following training environment:
       - The dataset is split into episodes of length `chunk_size`.
       - Each reset(), we pick one chunk at random.
-      - action: acceleration in [-3,3]
-      - observation: [current_speed, reference_speed]
-      - reward: -|current_speed - reference_speed|
+      - lead car speed determined by dataset.
+      - ego car (agent) must follow lead car's speed and maintain 5 - 30m distance.
+      - action: acceleration in [-2,2]
+      - observation: [v_ego, v_lead, d, v_rel, a_prev]
+        - v_ego: agent's current speed
+        - v_lead: lead's current speed (from dataset)
+        - d: distance (x_lead - x_ego)
+        - v_rel: relative speed (v_ego - v_lead)
+        - a_prev: previous acceleration (minimize jerk)
+      - reward: 
     """
 
-    def __init__(self, episodes_list, delta_t=1.0):
+    def __init__(self, episodes_list, delta_t=1.0, 
+                 d_init_range=(15.0, 25.0), # helps at reset to minimize penalities
+                 d_min=5.0, d_max=30.0, # min and max follow distance
+                 lambda_d=1.0, # reward weight, follow distance most important
+                 lambda_v=0.5, # reward weight, speed secondary to distance
+                 lambda_j=0.1, # reward weight, minimize jerk for comfort but not a safety concern
+                 ):
         super().__init__()
         self.episodes_list = episodes_list
         self.num_episodes = len(episodes_list)
         self.delta_t = delta_t
+        self.d_min, self.d_max = d_min, d_max
+        self.lambda_d, self.lambda_v, self.lambda_j = lambda_d, lambda_v, lambda_j
 
-        # Actions, Observations
+        # Actions
         self.action_space = spaces.Box(low=-2.0, high=2.0, shape=(1,), dtype=np.float32)
-        self.observation_space = spaces.Box(low=0.0, high=50.0, shape=(2,), dtype=np.float32)
+
+        # Observations   
+        low = np.array([0.0, 0.0, 0.0, -50.0, -2.0], dtype=np.float32)    
+        high = np.array([50.0, 50.0, 100.0, 50.0, 2.0], dtype=np.float32)
+        self.observation_space = spaces.Box(low=low, high=high, shape=(5,), dtype=np.float32)
 
         # Episode-specific
         self.current_episode = None
         self.episode_len = 0
         self.step_idx = 0
-        self.current_speed = 0.0
-        self.ref_speed = 0.0
+#        self.current_speed = 0.0
+#        self.ref_speed = 0.0
+
+        # Kinematics
+        self.x_ego = self.v_ego = self.a_prev = 0.0
+        self.x_lead = self.v_lead = 0.0
+        self.d_init_range = d_init_range # randomize inital gap each reset
+        
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
