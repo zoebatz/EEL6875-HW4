@@ -1,3 +1,16 @@
+import os, warnings
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"       # turns OFF oneDNN custom ops (no more "port.cc:113" message)
+
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+import tensorflow as tf
+tf.get_logger().setLevel('ERROR')          # hide WARNING:tensorflow lines
+tf.autograph.set_verbosity(0)              # hide AutoGraph conversion warnings
+
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -10,9 +23,10 @@ from stable_baselines3.common.logger import configure
 from stable_baselines3.common.utils import get_linear_fn
 from stable_baselines3.common.noise import NormalActionNoise
 
+
 import torch
 import torch.nn as nn
-import os
+
 import time
 import argparse
 import csv
@@ -209,7 +223,7 @@ class TestEnv(gym.Env):
         self.v_ego = 0.0
         self.a_prev = 0.0
         self.x_lead = 20.0
-        self.v_lead = float(self.current_episode[self.step_idx])
+        self.v_lead = float(self.full_data[self.idx])
 
         obs = self._make_obs()
         info = {}
