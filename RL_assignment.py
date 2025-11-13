@@ -34,7 +34,7 @@ import csv
 DATA_LEN = 1200
 CSV_FILE = "speed_profile.csv"
 SEED = 4
-MODEL_NAME = "SAC"
+MODEL_NAME = "PPO"
 MODEL_DICT = {'SAC': SAC, 'PPO': PPO, 'TD3': TD3, 'DDPG': DDPG}
 
 
@@ -371,7 +371,7 @@ def main():
     total_timesteps = int(steps_env) if steps_env else 100_000
     tau_value = float(tau_env) if tau_env else 0.005
     gamma_value = float(gamma_env) if gamma_env else 0.99
-    ent_coeff_value = ent_coeff_env if ent_coeff_env else 'auto'
+    ent_coeff_value = float(ent_coeff_env) if ent_coeff_env else 0.005 #'auto' for SAC
 
     print(f"[INFO] Using hyperparams: LR={lr_value}, Batch={batch_value}, Buffer={buffer_value}, Steps={total_timesteps}")
 
@@ -478,7 +478,7 @@ model = ModelClass('MlpPolicy', train_env, **common_kwargs, **MODEL_CONFIG[model
         target_noise_clip=0.5,
         device=device
     )'''
-    '''model = PPO(
+    model = PPO(
         policy="MlpPolicy",
         env=train_env,
         seed=SEED,
@@ -489,14 +489,15 @@ model = ModelClass('MlpPolicy', train_env, **common_kwargs, **MODEL_CONFIG[model
         n_steps=2048,
         n_epochs=10,
         gae_lambda=0.95,
-        gamma=0.99,
+        gamma=gamma_value, # 0.99
         clip_range=0.2,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        ent_coef=0.005,
+        ent_coef=ent_coeff_value, # 0.005,
         device=device
-    )'''
-    model = SAC(
+    )
+
+    '''model = SAC(
         policy="MlpPolicy",
         env=train_env,
         seed=SEED,
@@ -509,7 +510,7 @@ model = ModelClass('MlpPolicy', train_env, **common_kwargs, **MODEL_CONFIG[model
         gamma=gamma_value,
         ent_coef=ent_coeff_value,
         device=device
-    )
+    )'''
     
 
     model.set_logger(logger)
