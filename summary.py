@@ -3,14 +3,14 @@ import pandas as pd
 import glob
 
 # Path to your hyperparam sweep folder
-root_dir = r"C:\Users\Mitch\Desktop\zoe\EEL6875 HW3\ddpg_hyperparam_sweep_results"
+root_dir = r"C:\Users\Mitch\Desktop\zoe\EEL6875 HW4\SAC_hyperparam_sweep_results"
 
-model_name = 'DDPG'
+model_name = 'SAC'
 # List to store all runs' results
 all_runs = []
 
 # Recursively search for all test_metrics CSVs
-for csv_file in glob.glob(os.path.join(root_dir, "**", "test_metrics_*.csv"), recursive=True):
+for csv_file in glob.glob(os.path.join(root_dir, "**", "acc_test_metrics_*.csv"), recursive=True):
     # Example path:
     # ...\chunk100_lr0.0003_batch512_buf500000_steps300000_20251026_210304_chunk100_20251026_210308\test_metrics_chunk100_20251026_210308.csv
     folder = os.path.basename(os.path.dirname(csv_file))
@@ -43,7 +43,7 @@ for csv_file in glob.glob(os.path.join(root_dir, "**", "test_metrics_*.csv"), re
 summary_df = pd.concat(all_runs, ignore_index=True)
 
 # Sort by RMSE ascending
-summary_df = summary_df.sort_values("RMSE")
+summary_df = summary_df.sort_values("RMSE_speed")
 
 # Print the best config
 print("\n[Best configuration by RMSE]")
