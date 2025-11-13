@@ -14,7 +14,7 @@ batch_sizes = [256, 512]
 buffer_sizes = [500_000, 1_000_000, 2_000_000]
 total_timesteps = [100_000, 300_000, 500_000, 1_000_000]
 '''
-chunk_sizes = [50, 100, 200, 400]
+chunk_sizes = [50, 100, 400]
 learning_rates = [3e-4]
 batch_sizes = [256, 512]
 buffer_sizes = [500_000, 1_000_000, 2_000_000] # remove for PPO
@@ -43,6 +43,7 @@ for i, (chunk, lr, batch, buf, steps) in enumerate(param_grid):
     env["BATCH_SIZE"] = str(batch)
     env["BUFFER_SIZE"] = str(buf)
     env["TOTAL_STEPS"] = str(steps)
+
 
 
     # Run RL_assignment.py as a subprocess
