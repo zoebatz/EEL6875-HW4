@@ -33,11 +33,10 @@ import csv
 
 DATA_LEN = 1200
 CSV_FILE = "speed_profile.csv"
-SEED = 27
-
+SEED = 4
+MODEL_NAME = "SAC"
 MODEL_DICT = {'SAC': SAC, 'PPO': PPO, 'TD3': TD3, 'DDPG': DDPG}
-REWARD_MODE = 'huber' # squared or huber
-HUBER_DELTA = 1.0   # huber threshold
+
 
 
 # ------------------------------------------------------------------------
@@ -77,7 +76,8 @@ class TrainEnv(gym.Env):
       - reward: 
     """
 
-    def __init__(self, episodes_list, delta_t=1.0, 
+    def __init__(self, episodes_list, 
+                 delta_t=0.1,   # changed from 1.0, more realistic 
                  d_init_range=(15.0, 25.0), # helps at reset to minimize penalities
                  d_min=5.0, d_max=30.0, # min and max follow distance
                  lambda_d=1.0, # reward weight, follow distance most important
@@ -192,7 +192,7 @@ class TestEnv(gym.Env):
       - reward: -|current_speed - reference_speed|
     """
 
-    def __init__(self, full_data, delta_t=1.0,
+    def __init__(self, full_data, delta_t=0.1, # changed from 1.0, more realistic
                  d_init=20.0, d_min=5.0, d_max=30.0):
         super().__init__()
         self.full_data = full_data
@@ -322,7 +322,7 @@ def main():
     args = parser.parse_args()
 
     # --- set model ---
-    model_name = 'SAC' # (SAC, PPO, TD3, DDPG)
+    model_name = MODEL_NAME # (SAC, PPO, TD3, DDPG)
 
     # ---- set random seed for reproducability ----
 #    SEED = 27
@@ -337,8 +337,7 @@ def main():
     # ------------------------------------------------------------------------
     # 1) Always create a 1200-step speed dataset
     # ------------------------------------------------------------------------
-#    DATA_LEN = 1200
-#    CSV_FILE = "speed_profile.csv"
+
 
     if not os.path.exists(CSV_FILE):
         # Force-generate a 1200-step sinusoidal + noise speed profile
@@ -362,13 +361,19 @@ def main():
     batch_env = os.getenv("BATCH_SIZE")
     buffer_env = os.getenv("BUFFER_SIZE")
     steps_env = os.getenv("TOTAL_STEPS")
+    tau_env = os.getenv("TAU")
+    gamma_env = os.getenv("GAMMA")
+    ent_coeff_env = os.getenv("ENT_COEFF")
 
     lr_value = float(lr_env) if lr_env else 3e-4
     batch_value = int(batch_env) if batch_env else 256
     buffer_value = int(buffer_env) if buffer_env else 500_000
     total_timesteps = int(steps_env) if steps_env else 100_000
+    tau_value = float(tau_env) if tau_env else 0.005
+    gamma_value = float(gamma_env) if gamma_env else 0.99
+    ent_coeff_value = ent_coeff_env if ent_coeff_env else 'auto'
 
-    print(f"[INFO] Using hyperparams: LR={lr_value}, Batch={batch_value}, Buffer={buffer_value}, Steps={total_timesteps}, Reward={REWARD_MODE}")
+    print(f"[INFO] Using hyperparams: LR={lr_value}, Batch={batch_value}, Buffer={buffer_value}, Steps={total_timesteps}")
 
 
     # ---- save each run to timestamped folder ----
@@ -500,9 +505,9 @@ model = ModelClass('MlpPolicy', train_env, **common_kwargs, **MODEL_CONFIG[model
         learning_rate= lr_value, # 3e-4,
         batch_size=batch_value,
         buffer_size=buffer_value,
-        tau=0.005,
-        gamma=0.99,
-        ent_coef='auto',
+        tau=tau_value,
+        gamma=gamma_value,
+        ent_coef=ent_coeff_value,
         device=device
     )
     
@@ -532,11 +537,12 @@ model = ModelClass('MlpPolicy', train_env, **common_kwargs, **MODEL_CONFIG[model
     # ------------------------------------------------------------------------
     test_env = TestEnv(
         full_data=full_speed_data,
-        delta_t=0.1,   # match training dt
+        delta_t=0.1,   # match training dt 
         d_init=20.0,   # start mid-band
         d_min=5.0, d_max=30.0
     )
 
+    # reset environment for full test
     obs, _ = test_env.reset()
     v_ego_list, v_lead_list, d_list, j_list = [], [], [], []
     rewards, actions = [], []
@@ -545,6 +551,7 @@ model = ModelClass('MlpPolicy', train_env, **common_kwargs, **MODEL_CONFIG[model
         action, _ = model.predict(obs, deterministic=True)  # no exploration in testing
         obs, reward, terminated, truncated, info = test_env.step(action)
 
+        # log everything for eval
         # obs = [v_ego, v_lead, d, v_rel, a_prev]
         v_ego, v_lead, d, _, _ = obs
         v_ego_list.append(float(v_ego))
@@ -557,13 +564,13 @@ model = ModelClass('MlpPolicy', train_env, **common_kwargs, **MODEL_CONFIG[model
         if terminated or truncated:
             break
 
-    # ---- Convert to arrays
+    # convert to arrays for easier computing 
     v_ego_arr = np.array(v_ego_list)
     v_lead_arr = np.array(v_lead_list)
     d_arr = np.array(d_list)
     j_arr = np.array(j_list)
 
-    # ---- Metrics required for report
+    # metrics for report
     speed_diff = np.abs(v_ego_arr - v_lead_arr)
     mae_speed = float(np.mean(speed_diff))
     rmse_speed = float(np.sqrt(np.mean((v_ego_arr - v_lead_arr) ** 2)))
@@ -574,10 +581,10 @@ model = ModelClass('MlpPolicy', train_env, **common_kwargs, **MODEL_CONFIG[model
     corr = float(np.corrcoef(v_ego_arr, v_lead_arr)[0, 1])
 
     print(f"[TEST] MAE={mae_speed:.3f}, RMSE={rmse_speed:.3f}, "
-        f"Jerk μ={jerk_mean:.3f}, Jerk σ²={jerk_var:.3f}, "
+        f"Jerk mean={jerk_mean:.3f}, Jerk var={jerk_var:.3f}, "
         f"InRange%={in_range_pct:.1f}, Corr={corr:.3f}")
 
-    # ---- Save metrics
+    # save metrics
     metrics_path = os.path.join(log_dir, f"acc_test_metrics_chunk{chunk_size}_{timestamp}.csv")
     with open(metrics_path, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -588,7 +595,7 @@ model = ModelClass('MlpPolicy', train_env, **common_kwargs, **MODEL_CONFIG[model
                         jerk_mean, jerk_var, in_range_pct,
                         round(end_time - start_time, 2), corr])
 
-    # ---- Plots required for the report
+    # plots
     # 1) Ego vs Lead speed
     plt.figure(figsize=(10, 5))
     plt.plot(v_lead_arr, label="Lead Speed", linestyle="--")
@@ -603,7 +610,7 @@ model = ModelClass('MlpPolicy', train_env, **common_kwargs, **MODEL_CONFIG[model
     plt.plot(d_arr, label="Following Distance")
     plt.axhspan(5.0, 30.0, alpha=0.15, label="Safe Range [5,30] m")
     plt.xlabel("Timestep"); plt.ylabel("Distance (m)")
-    plt.title("Following Distance Over Time")
+    plt.title(f"Following Distance Over Time (In Range Percentage={in_range_pct:.1f})")
     plt.legend(); plt.tight_layout()
     plt.savefig(os.path.join(log_dir, f"acc_distance_over_time_chunk{chunk_size}.png"))
 
