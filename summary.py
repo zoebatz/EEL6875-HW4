@@ -27,7 +27,7 @@ for csv_file in glob.glob(os.path.join(root_dir, "**", "acc_test_metrics_*.csv")
     # ...\chunk100_lr0.0003_batch512_buf500000_steps300000_20251026_210304_chunk100_20251026_210308\test_metrics_chunk100_20251026_210308.csv
     folder = os.path.basename(os.path.dirname(csv_file))
 
-    # ---- SAC hyperparams ----
+    '''# ---- SAC hyperparams ----
     if model_name == 'SAC':
         # Parse hyperparameters from folder name
         parts = folder.split("_")
@@ -50,9 +50,9 @@ for csv_file in glob.glob(os.path.join(root_dir, "**", "acc_test_metrics_*.csv")
         df["buffer_size"] = buf
         df["total_timesteps"] = steps
         df["timestamp"] = timestamp
-    
+'''    
     # ---- PPO hyperparams ----
-    elif model_name == 'PPO':
+    if model_name == 'PPO':
         # Parse hyperparameters from folder name
         parts = folder.split("_")
         try:
@@ -78,7 +78,8 @@ for csv_file in glob.glob(os.path.join(root_dir, "**", "acc_test_metrics_*.csv")
         df["timestamp"] = timestamp
 
     # ---- TD3 hyperparams ----
-    elif model_name == 'TD3' or 'DDPG':
+    #if model_name == 'TD3' or 'DDPG':
+    else: # SAC, TD3, DDPG
         # Parse hyperparameters from folder name
         parts = folder.split("_")
         try:

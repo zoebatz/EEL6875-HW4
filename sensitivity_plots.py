@@ -4,13 +4,46 @@ import pandas as pd
 import os
 import csv
 
-# PPO sensitivity plots
-logdir_ppo = "PPO_hyperparam_sweep_results/PPO_combined_hyperparam_results.csv"
-df_ppo = pd.read_csv(logdir_ppo)
+# SAC sensitivity plots
+logdir_sac = "SAC_hyperparam_sweep_results/SAC_combined_hyperparam_results.csv"
+df_sac = pd.read_csv(logdir_sac)
 
 plt.style.use("ggplot")
 
-# SAC sensitivity plots
+# Aggregate RMSE by each hyperparameter
+df_chunk = df_sac.groupby("chunk_size")["RMSE_speed"].mean().reset_index()
+df_batch = df_sac.groupby("batch_size")["RMSE_speed"].mean().reset_index()
+df_gamma = df_sac.groupby("gamma")["RMSE_speed"].mean().reset_index()
+df_tau   = df_sac.groupby("tau")["RMSE_speed"].mean().reset_index()
+
+# Create combined figure (wide rectangle)
+fig, axes = plt.subplots(2, 2, figsize=(14, 6))
+
+def plot_sensitivity(ax, df, x, title):
+    sns.lineplot(data=df, x=x, y="RMSE_speed", marker="o", ci=None, ax=ax)
+    ax.set_title(title, fontsize=12)
+    ax.set_xlabel(x)
+    ax.set_ylabel("RMSE_speed")
+    ax.grid(True)
+
+# Row 1
+plot_sensitivity(axes[0, 0], df_chunk, "chunk_size", "SAC: RMSE vs chunk_size")
+plot_sensitivity(axes[0, 1], df_batch, "batch_size", "SAC: RMSE vs batch_size")
+
+# Row 2
+plot_sensitivity(axes[1, 0], df_gamma, "gamma", "SAC: RMSE vs gamma")
+plot_sensitivity(axes[1, 1], df_tau,   "tau",   "SAC: RMSE vs tau")
+
+plt.tight_layout()
+
+# Save in the same folder as the CSV
+save_dir = os.path.dirname(logdir_sac)
+plt.savefig(os.path.join(save_dir, "SAC_sensitivity_plots.png"))
+
+plt.show()
+
+
+'''# SAC sensitivity plots
 logdir_sac = "SAC_hyperparam_sweep_results/SAC_combined_hyperparam_results.csv"
 df_sac = pd.read_csv(logdir_sac)
 
@@ -46,9 +79,15 @@ plt.tight_layout()
 save_dir = os.path.dirname(logdir_sac)
 plt.savefig(os.path.join(save_dir, "SAC_sensitivity_plots.png"))
 
-plt.show()
+plt.show()'''
 
-'''# Aggregate RMSE by each hyperparameter
+'''# PPO sensitivity plots
+logdir_ppo = "PPO_hyperparam_sweep_results/PPO_combined_hyperparam_results.csv"
+df_ppo = pd.read_csv(logdir_ppo)
+
+plt.style.use("ggplot")
+
+# Aggregate RMSE by each hyperparameter
 df_chunk   = df_ppo.groupby("chunk_size")["RMSE_speed"].mean().reset_index()
 df_batch   = df_ppo.groupby("batch_size")["RMSE_speed"].mean().reset_index()
 df_gamma   = df_ppo.groupby("gamma")["RMSE_speed"].mean().reset_index()
