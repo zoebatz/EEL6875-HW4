@@ -1,0 +1,2 @@
+avg_test_reward,MAE_speed,RMSE_speed,jerk_mean,jerk_var,in_range_pct,Training Time,Corr Coeff
+-621.7319325353062,10.138796634487807,10.969282387694465,-0.016666666666666666,0.0037622906063786783,0.75,30.01,nan

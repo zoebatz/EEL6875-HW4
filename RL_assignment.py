@@ -34,7 +34,7 @@ import csv
 DATA_LEN = 1200
 CSV_FILE = "speed_profile.csv"
 SEED = 4
-MODEL_NAME = "PPO"
+MODEL_NAME = "DDPG"
 MODEL_DICT = {'SAC': SAC, 'PPO': PPO, 'TD3': TD3, 'DDPG': DDPG}
 
 
@@ -442,75 +442,79 @@ model = ModelClass('MlpPolicy', train_env, **common_kwargs, **MODEL_CONFIG[model
 '''
 
     # try SAC, PPO, TD3, DDPG
-    '''model = DDPG(
-        policy="MlpPolicy",
-        env=train_env,
-        seed=SEED,
-        verbose=1,
-        policy_kwargs=policy_kwargs,
-        learning_rate= lr_value, # 3e-4,
-        buffer_size=buffer_value,
-        batch_size=batch_value,
-        action_noise=action_noise,
-#        learning_starts=10_000,
-        tau=0.005,
-        gamma=0.99,
-        train_freq=100, # how often to update model
-        gradient_steps=100, # how many updates per training step
-        device=device
-    )'''
-    '''model = TD3(
-        policy="MlpPolicy",
-        env=train_env,
-        seed=SEED,
-        verbose=1,
-        policy_kwargs=policy_kwargs,
-        learning_rate= lr_value, # 3e-4,
-        buffer_size=buffer_value,
-        batch_size=batch_value,
-        action_noise=action_noise,
-        tau=0.005,
-        gamma=0.99,
-        train_freq=100, # how often to update model
-        gradient_steps=100, # how many updates per training step
-        policy_delay=2,
-        target_policy_noise=0.2,
-        target_noise_clip=0.5,
-        device=device
-    )'''
-    model = PPO(
-        policy="MlpPolicy",
-        env=train_env,
-        seed=SEED,
-        verbose=1,
-        policy_kwargs=policy_kwargs,
-        learning_rate= lr_value, # 3e-4,
-        batch_size=batch_value,
-        n_steps=2048,
-        n_epochs=10,
-        gae_lambda=0.95,
-        gamma=gamma_value, # 0.99
-        clip_range=0.2,
-        vf_coef=0.5,
-        max_grad_norm=0.5,
-        ent_coef=ent_coeff_value, # 0.005,
-        device=device
-    )
+    if model_name == 'DDPG':
+        model = DDPG(
+            policy="MlpPolicy",
+            env=train_env,
+            seed=SEED,
+            verbose=1,
+            policy_kwargs=policy_kwargs,
+            learning_rate= lr_value, # 3e-4,
+            buffer_size=buffer_value,
+            batch_size=batch_value,
+            action_noise=action_noise,
+    #        learning_starts=10_000,
+            tau=tau_value, #0.005,
+            gamma=gamma_value, # 0.99,
+            train_freq=100, # how often to update model
+            gradient_steps=100, # how many updates per training step
+            device=device
+        )
+    elif model_name == 'TD3':
+        model = TD3(
+            policy="MlpPolicy",
+            env=train_env,
+            seed=SEED,
+            verbose=1,
+            policy_kwargs=policy_kwargs,
+            learning_rate= lr_value, # 3e-4,
+            buffer_size=buffer_value,
+            batch_size=batch_value,
+            action_noise=action_noise,
+            tau=tau_value, # 0.005,
+            gamma=gamma_value, # 0.99,
+            train_freq=100, # how often to update model
+            gradient_steps=100, # how many updates per training step
+            policy_delay=2,
+            target_policy_noise=0.2,
+            target_noise_clip=0.5,
+            device=device
+        )
+    elif model_name == 'PPO':
+        model = PPO(
+            policy="MlpPolicy",
+            env=train_env,
+            seed=SEED,
+            verbose=1,
+            policy_kwargs=policy_kwargs,
+            learning_rate= lr_value, # 3e-4,
+            batch_size=batch_value,
+            n_steps=2048,
+            n_epochs=10,
+            gae_lambda=0.95,
+            gamma=gamma_value, # 0.99
+            clip_range=0.2,
+            vf_coef=0.5,
+            max_grad_norm=0.5,
+            ent_coef=ent_coeff_value, # 0.005,
+            device=device
+        )
 
-    '''model = SAC(
-        policy="MlpPolicy",
-        env=train_env,
-        seed=SEED,
-        verbose=1,
-        policy_kwargs=policy_kwargs,
-        learning_rate= lr_value, # 3e-4,
-        batch_size=batch_value,
-        buffer_size=buffer_value,
-        tau=tau_value,
-        gamma=gamma_value,
-        ent_coef=ent_coeff_value,
-        device=device
-    )'''
+    elif model_name == 'SAC':
+        model = SAC(
+            policy="MlpPolicy",
+            env=train_env,
+            seed=SEED,
+            verbose=1,
+            policy_kwargs=policy_kwargs,
+            learning_rate= lr_value, # 3e-4,
+            batch_size=batch_value,
+            buffer_size=buffer_value,
+            tau=tau_value,
+            gamma=gamma_value,
+            ent_coef=ent_coeff_value,
+            device=device
+        )
     
 
     model.set_logger(logger)
