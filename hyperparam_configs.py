@@ -161,24 +161,32 @@ if model_name == 'SAC':
     chunk_sizes = [50, 100, 400]
     learning_rates = [3e-4]
     batch_sizes = [256, 512]
+    buffer_sizes = [500_000, 1_000_000] # removed 2_000_000
+    gamma = [0.95, 0.98, 0.99]  # added
+    tau = [0.002, 0.005] # added
+    total_timesteps = [100_000] # removed 200_000
+
+    ''' chunk_sizes = [50, 100, 400]
+    learning_rates = [3e-4]
+    batch_sizes = [256, 512]
     buffer_sizes = [500_000, 1_000_000, 2_000_000] # remove for PPO
-    total_timesteps = [100_000, 500_000]
+    total_timesteps = [100_000, 500_000]'''
 
     # create all combos
-    param_grid = list(itertools.product(chunk_sizes, learning_rates, batch_sizes, buffer_sizes, total_timesteps))
+    param_grid = list(itertools.product(chunk_sizes, learning_rates, batch_sizes, buffer_sizes, gamma, tau, total_timesteps))
     print(f"[INFO] Total combinations to run: {len(param_grid)}")
 
     # create folder for all sweep results
     os.makedirs(f"{model_name}_hyperparam_sweep_results", exist_ok=True)
 
     # loop through all combos
-    for i, (chunk, lr, batch, buf, steps) in enumerate(param_grid):
+    for i, (chunk, lr, batch, buf, gamma, tau, steps) in enumerate(param_grid):
         print(f"\n=== Run {i+1}/{len(param_grid)} ===")
-        print(f"chunk={chunk}, lr={lr}, batch={batch}, buffer={buf}, steps={steps}")
+        print(f"chunk={chunk}, lr={lr}, batch={batch}, buffer={buf}, gamma={gamma}, tau={tau}, steps={steps}")
 
         # Unique folder name for this configuration
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        run_name = f"chunk{chunk}_lr{lr}_batch{batch}_buf{buf}_steps{steps}"
+        run_name = f"chunk{chunk}_lr{lr}_batch{batch}_buf{buf}_gamma{gamma}_tau{tau}_steps{steps}"
         out_dir = os.path.join(f"{model_name}_hyperparam_sweep_results", run_name)
 
         # Environment variables for RL_assignment.py
@@ -186,9 +194,9 @@ if model_name == 'SAC':
         env["LR"] = str(lr)
         env["BATCH_SIZE"] = str(batch)
         env["BUFFER_SIZE"] = str(buf)
+        env["GAMMA"] = str(gamma)
+        env["TAU"] = str(tau)
         env["TOTAL_STEPS"] = str(steps)
-
-
 
         # Run RL_assignment.py as a subprocess
         cmd = [
