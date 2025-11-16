@@ -34,7 +34,7 @@ import csv
 DATA_LEN = 1200
 CSV_FILE = "speed_profile.csv"
 SEED = 4
-MODEL_NAME = "DDPG"
+MODEL_NAME = "SAC"
 MODEL_DICT = {'SAC': SAC, 'PPO': PPO, 'TD3': TD3, 'DDPG': DDPG}
 
 
@@ -142,7 +142,7 @@ class TrainEnv(gym.Env):
         dt = self.delta_t
 
         # update ego
-        self.v_ego = max(0.0, self.v_ego + accel * dt)  # above 0.0
+        self.v_ego = max(0.0, self.v_ego + accel * dt)  # no negative speed
         self.x_ego = self.x_ego + self.v_ego * dt
 
         # update lead
@@ -371,7 +371,10 @@ def main():
     total_timesteps = int(steps_env) if steps_env else 100_000
     tau_value = float(tau_env) if tau_env else 0.005
     gamma_value = float(gamma_env) if gamma_env else 0.99
-    ent_coeff_value = float(ent_coeff_env) if ent_coeff_env else 0.005 #'auto' for SAC
+    if model_name == 'SAC':
+        ent_coeff_value = 'auto'
+    else:
+        ent_coeff_value = float(ent_coeff_env) if ent_coeff_env else 0.005 #'auto' for SAC
 
     print(f"[INFO] Using hyperparams: LR={lr_value}, Batch={batch_value}, Buffer={buffer_value}, Steps={total_timesteps}")
 

@@ -26,7 +26,9 @@ batch_sizes = [256, 512]
 buffer_sizes = [500_000, 1_000_000, 2_000_000]
 total_timesteps = [100_000, 300_000, 500_000, 1_000_000]
 '''
-
+# ------------
+# DDPG
+#-------------
 if model_name == 'DDPG':
     chunk_sizes = [50, 100, 400]
     learning_rates = [3e-4]
@@ -70,6 +72,9 @@ if model_name == 'DDPG':
         ]
         subprocess.run(cmd, env=env)
 
+# ------------
+# TD3
+#-------------
 if model_name == 'TD3':
     chunk_sizes = [50, 100, 400]
     learning_rates = [3e-4]
@@ -114,7 +119,9 @@ if model_name == 'TD3':
         subprocess.run(cmd, env=env)
 
 
-# remove buffer size for PPO
+# ------------
+# PPO
+#-------------
 if model_name == "PPO":
     chunk_sizes = [50, 100, 400]
     learning_rates = [3e-4]
@@ -156,7 +163,9 @@ if model_name == "PPO":
         ]
         subprocess.run(cmd, env=env)
 
-
+# ------------
+# SAC
+#-------------
 if model_name == 'SAC':
     chunk_sizes = [50, 100, 400]
     learning_rates = [3e-4]
@@ -197,6 +206,7 @@ if model_name == 'SAC':
         env["GAMMA"] = str(gamma)
         env["TAU"] = str(tau)
         env["TOTAL_STEPS"] = str(steps)
+        env["ENT_COEFF"] = str('auto')
 
         # Run RL_assignment.py as a subprocess
         cmd = [
