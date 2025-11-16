@@ -156,12 +156,22 @@ class TrainEnv(gym.Env):
         # reward
         speed_diff =  abs(self.v_ego - self.v_lead)
 
-        if d < self.d_min:
+        '''if d < self.d_min:
             dist_penalty = (self.d_min - d) # too close
         elif d > self.d_max:
             dist_penalty = (d - self.d_max) # too far
         else:
             dist_penalty = 0.0  # acceptable distance
+
+        reward = (-self.lambda_d * dist_penalty
+                  - self.lambda_v * speed_diff
+                  - self.lambda_j * (j ** 2))'''
+        if d < self.d_min:
+            dist_penalty = 1.5 * (self.d_min - d) # too close
+        elif d > self.d_max:
+            dist_penalty = 1.0 * (d - self.d_max) # too far
+        else:
+            dist_penalty = -0.1  # acceptable distance
 
         reward = (-self.lambda_d * dist_penalty
                   - self.lambda_v * speed_diff
@@ -247,11 +257,11 @@ class TestEnv(gym.Env):
 
         # compute reward for analysis
         if d < self.d_min:
-            dist_penalty = (self.d_min - d) # too close
+            dist_penalty = 1.5 * (self.d_min - d) # too close
         elif d > self.d_max:
-            dist_penalty = (d - self.d_max) # too far
+            dist_penalty = 1.0 * (d - self.d_max) # too far
         else:
-            dist_penalty = 0.0  # acceptable distance
+            dist_penalty = -0.1  # acceptable distance
 
         reward = (-1.0 * dist_penalty
                   - 0.5 * speed_diff
@@ -367,10 +377,10 @@ def main():
 
     lr_value = float(lr_env) if lr_env else 3e-4
     batch_value = int(batch_env) if batch_env else 256
-    buffer_value = int(buffer_env) if buffer_env else 500_000
+    buffer_value = int(buffer_env) if buffer_env else 1_000_000 # 500_000
     total_timesteps = int(steps_env) if steps_env else 100_000
-    tau_value = float(tau_env) if tau_env else 0.005
-    gamma_value = float(gamma_env) if gamma_env else 0.99
+    tau_value = float(tau_env) if tau_env else 0.002
+    gamma_value = float(gamma_env) if gamma_env else 0.98
     if model_name == 'SAC':
         ent_coeff_value = 'auto'
     else:

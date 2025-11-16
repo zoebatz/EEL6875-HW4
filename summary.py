@@ -100,6 +100,7 @@ for csv_file in glob.glob(os.path.join(root_dir, "**", "acc_test_metrics_*.csv")
         df["chunk_size"] = chunk
         df["learning_rate"] = lr
         df["batch_size"] = batch
+        df["buffer"] = buf
         df["gamma"] = gamma
         df["tau"] = tau
         df["total_timesteps"] = steps
